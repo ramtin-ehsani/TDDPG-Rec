@@ -26,7 +26,7 @@ GAMMA = 0.9  # reward discount
 TAU = 0.01  # soft replacement
 
 
-def xavier_init(in_num, out_num, constant=1):
+def initialize(in_num, out_num, constant=1):
     low = -constant * np.sqrt(6.0 / (in_num + out_num))
     high = constant * np.sqrt(6.0 / (in_num + out_num))
     return tf.random_uniform((in_num, out_num), minval=low, maxval=high, dtype=tf.float32)
@@ -70,13 +70,13 @@ class DQN(object):
     def _build_net(self, i_s, i_i, scope):
         with tf.variable_scope(scope):
             n_l1 = 100
-            self.w1_s = tf.Variable(name='w1_s', initial_value=xavier_init(self.s_dim * self.s_num, n_l1))
-            self.w1_i = tf.Variable(name='w1_i', initial_value=xavier_init(self.i_dim, n_l1))
+            self.w1_s = tf.Variable(name='w1_s', initial_value=initialize(self.s_dim * self.s_num, n_l1))
+            self.w1_i = tf.Variable(name='w1_i', initial_value=initialize(self.i_dim, n_l1))
             self.b1 = tf.Variable(name='b1', initial_value=tf.zeros([n_l1]))
             layer = tf.nn.relu(
                 tf.nn.dropout((tf.matmul(i_s, self.w1_s) + tf.matmul(i_i, self.w1_i) + self.b1), rate=1 - self.keep_rate))
             # Q(s,a)
-            self.w2 = tf.Variable(name='w2', initial_value=xavier_init(n_l1, 1))
+            self.w2 = tf.Variable(name='w2', initial_value=initialize(n_l1, 1))
             self.b2 = tf.Variable(name='b2', initial_value=tf.zeros([1]))
             q_value = tf.matmul(layer, self.w2) + self.b2
             return q_value
@@ -110,7 +110,14 @@ class DQN(object):
 
     def store_transition(self, i_s, i_i, i_a, i_r, i_s_):
         index = self.pointer % self.MEMORY_CAPACITY  # replace the old memory with new memory
-        transition = np.hstack((i_s[0], i_i, i_a, i_r, i_s_[0]))
+
+        # Reshape i_s and i_i if needed
+        if i_s.ndim == 2:
+            i_s = i_s[0]  # Assuming it's shape (1, 1000), convert to (1000,)
+        if i_i.ndim == 2:
+            i_i = i_i[0]  # Assuming it's shape (1, 100), convert to (100,)
+
+        transition = np.hstack((i_s, i_i, i_a, i_r, i_s_[0]))
         self.memory[index, :] = transition
         self.pointer += 1
 
@@ -334,6 +341,8 @@ class RlProcess:
                                                  in_a=a_,
                                                  train_list=train_list,
                                                  nega_list=nega_list)
+                    # print(emb_s.shape)
+                    # print(item_vec.shape)
                     dqn.store_transition(emb_s, item_vec, a_, r, emb_s_)
                 hit_list, ndcg_list, precision_list, recall_list = [], [], [], []
                 for epoch in range(self.epochs):
@@ -377,6 +386,8 @@ class RlProcess:
                                                          in_a=a_,
                                                          train_list=train_list,
                                                          nega_list=nega_list)
+                            # print(emb_s.shape)
+                            # print(item_vec.shape)
                             dqn.store_transition(emb_s, item_vec, a_, r, emb_s_)
 
                             s = s_
@@ -529,7 +540,7 @@ if __name__ == '__main__':
     the_data_name = 'Digital_Music'
     state_num = 10  # Number of items in the action
     one_u_steps = 10  # Training times per user
-    test_top_k = [10, 20]  # Top_k during test
+    test_top_k = [5, 10, 20]  # Top_k during test
     str_alpha = '0.5'  # Proportion of product description
     epochs = 3  # Number of training rounds
 

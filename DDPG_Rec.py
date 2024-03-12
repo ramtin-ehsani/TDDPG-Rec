@@ -19,7 +19,7 @@ GAMMA = 0.9  # reward discount
 TAU = 0.01  # soft replacement
 
 
-def xavier_init(in_num, out_num, constant=1):
+def initialize(in_num, out_num, constant=1):
     low = -constant * np.sqrt(tf.math.divide(6.0, (in_num + out_num)))
     high = constant * np.sqrt(tf.math.divide(6.0, (in_num + out_num)))
     return tf.random_uniform((in_num, out_num), minval=low, maxval=high, dtype=tf.float32)
@@ -84,7 +84,7 @@ class DDPG(object):
     def _build_a(self, i_s, scope):
         with tf.variable_scope(scope):
             self.a_w1 = tf.Variable(name='a_w1_s',
-                                    initial_value=xavier_init(self.s_dim * self.s_num, self.a_w_dim))
+                                    initial_value=initialize(self.s_dim * self.s_num, self.a_w_dim))
             self.a_b1 = tf.Variable(name='a_b1',
                                     initial_value=tf.zeros([self.a_w_dim]))
             action_w = normalize_data(tf.nn.relu(tf.nn.dropout((
@@ -94,13 +94,13 @@ class DDPG(object):
     def _build_c(self, i_s, i_a, scope):
         with tf.variable_scope(scope):
             n_l1 = 100
-            self.c_w1_s = tf.Variable(name='c_w1_s', initial_value=xavier_init(self.s_dim * self.s_num, n_l1))
-            self.c_w1_a = tf.Variable(name='c_w1_a', initial_value=xavier_init(self.a_w_dim, n_l1))
+            self.c_w1_s = tf.Variable(name='c_w1_s', initial_value=initialize(self.s_dim * self.s_num, n_l1))
+            self.c_w1_a = tf.Variable(name='c_w1_a', initial_value=initialize(self.a_w_dim, n_l1))
             self.c_b1 = tf.Variable(name='c_b1', initial_value=tf.zeros([n_l1]))
             # Q(s,a)
             net = tf.nn.relu(tf.nn.dropout((
                 tf.matmul(i_s, self.c_w1_s) + tf.matmul(i_a, self.c_w1_a) + self.c_b1), rate=1-self.keep_rate))
-            self.c_w2 = tf.Variable(name='c_w2', initial_value=xavier_init(n_l1, 1))
+            self.c_w2 = tf.Variable(name='c_w2', initial_value=initialize(n_l1, 1))
             self.c_b2 = tf.Variable(name='c_b2', initial_value=tf.zeros([1]))
             q_value = tf.matmul(net, self.c_w2) + self.c_b2
             return q_value
@@ -464,7 +464,8 @@ class RlProcess:
                                     ' nDCG:' + str(cluster_ndcg) + \
                                     ' Precision:' + str(cluster_precision) + \
                                     ' Recall:' + str(cluster_recall) + \
-                                    ' F1:' + str(cluster_f1)
+                                    ' F1:' + str(cluster_f1) + \
+                                    ' Total steps:' + str(total_cluster_steps)
                         kk += 1
                     hit_list.append(hit_t)
                     ndcg_list.append(ndcg_t)
@@ -528,7 +529,7 @@ if __name__ == '__main__':
     action_num = 10  # Number of items in the action
     state_num = 20  # Number of items in the status
     one_u_steps = 10  # Training times per user
-    test_top_k = [10, 20]  # Top_k during test
+    test_top_k = [5, 10, 20]  # Top_k during test
     str_alpha = '0.5'  # Proportion of product description
     epochs = 3  # Number of training rounds
 
