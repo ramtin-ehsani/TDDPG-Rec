@@ -10,6 +10,10 @@ import os
 from datetime import datetime
 from env import RecommendENV
 
+# Uncomment if you run into tensorflow related issues
+# import tensorflow.compat.v1 as tf
+# tf.disable_v2_behavior()
+
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 
@@ -54,31 +58,27 @@ class DQN(object):
         self.R = tf.placeholder(tf.float32, [None, 1], 'r')
 
         self.q = self._build_net(self.S, self.item, scope='eval')
-        self.q_ = self._build_net(self.S_, self.item, scope='target')
-        self.ae_params = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='eval')
-        self.at_params = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='target')
 
-        q_target = self.R + GAMMA * self.q_
+        self.ae_params = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='eval')
+
+        q_target = self.R + GAMMA * self._build_net(self.S_, self.item, scope='eval', reuse=True)
         self.td_error = tf.losses.mean_squared_error(labels=q_target, predictions=self.q)
         self.train = tf.train.AdamOptimizer(LR).minimize(self.td_error, var_list=self.ae_params)
 
-        # target net replacement
-        self.soft_replace = [[tf.assign(ta, (1 - TAU) * ta + TAU * ea)] for ta, ea in zip(self.at_params, self.ae_params)]
-
         self.sess.run(tf.global_variables_initializer())
 
-    def _build_net(self, i_s, i_i, scope):
-        with tf.variable_scope(scope):
+    def _build_net(self, i_s, i_i, scope, reuse=None):
+        with tf.variable_scope(scope, reuse=reuse):
             n_l1 = 100
-            self.w1_s = tf.Variable(name='w1_s', initial_value=initialize(self.s_dim * self.s_num, n_l1))
-            self.w1_i = tf.Variable(name='w1_i', initial_value=initialize(self.i_dim, n_l1))
-            self.b1 = tf.Variable(name='b1', initial_value=tf.zeros([n_l1]))
+            w1_s = tf.Variable(name='w1_s', initial_value=initialize(self.s_dim * self.s_num, n_l1))
+            w1_i = tf.Variable(name='w1_i', initial_value=initialize(self.i_dim, n_l1))
+            b1 = tf.Variable(name='b1', initial_value=tf.zeros([n_l1]))
             layer = tf.nn.relu(
-                tf.nn.dropout((tf.matmul(i_s, self.w1_s) + tf.matmul(i_i, self.w1_i) + self.b1), rate=1 - self.keep_rate))
+                tf.nn.dropout((tf.matmul(i_s, w1_s) + tf.matmul(i_i, w1_i) + b1), rate=1 - self.keep_rate))
             # Q(s,a)
-            self.w2 = tf.Variable(name='w2', initial_value=initialize(n_l1, 1))
-            self.b2 = tf.Variable(name='b2', initial_value=tf.zeros([1]))
-            q_value = tf.matmul(layer, self.w2) + self.b2
+            w2 = tf.Variable(name='w2', initial_value=initialize(n_l1, 1))
+            b2 = tf.Variable(name='b2', initial_value=tf.zeros([1]))
+            q_value = tf.matmul(layer, w2) + b2
             return q_value
 
     def choose_action(self, i_emb_s, c_list):
@@ -90,13 +90,9 @@ class DQN(object):
         i_emb_s = np.tile(i_emb_s, [len(c_list), 1])
         q_ = self.sess.run(self.q, {self.S: i_emb_s, self.item: item})
         max_index = np.argmax(q_)
-        # print(max_index, c_list, q_)
         return c_list[max_index]
 
     def learn(self):
-        # soft target replacement
-        self.sess.run(self.soft_replace)
-
         indices = np.random.choice(self.MEMORY_CAPACITY, size=self.batch_size)
         bt = self.memory[indices, :]
         bs = bt[:, :self.s_dim * self.s_num]
@@ -109,13 +105,13 @@ class DQN(object):
         return it_td_error
 
     def store_transition(self, i_s, i_i, i_a, i_r, i_s_):
-        index = self.pointer % self.MEMORY_CAPACITY  # replace the old memory with new memory
+        index = self.pointer % self.MEMORY_CAPACITY
 
         # Reshape i_s and i_i if needed
         if i_s.ndim == 2:
-            i_s = i_s[0]  # Assuming it's shape (1, 1000), convert to (1000,)
+            i_s = i_s[0]
         if i_i.ndim == 2:
-            i_i = i_i[0]  # Assuming it's shape (1, 100), convert to (100,)
+            i_i = i_i[0]
 
         transition = np.hstack((i_s, i_i, i_a, i_r, i_s_[0]))
         self.memory[index, :] = transition
@@ -123,6 +119,8 @@ class DQN(object):
 
     def set_keep_rate(self, keep_rate):
         self.keep_rate = keep_rate
+
+
 
 
 class RlProcess:
